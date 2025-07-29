@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>I can fix you</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f4f4f4;
+        }
+        h1, h2, p {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .puzzle-container {
+            position: relative;
+            border: 1px solid lightgray;
+            padding: 10px;
+            margin: 20px auto;
+            overflow: hidden;
+            background-color: #ffffff;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .puzzle-board {
+            position: absolute;
+            top: 0;
+            left: 0;
+            border: 1px solid black;
+            overflow: hidden;
+            background-color: #f0f0f0;
+        }
+        .puzzle-piece {
+            position: absolute;
+            cursor: grab;
+        }
+        .puzzle-piece canvas {
+            display: block;
+        }
+        .puzzle-piece.correct canvas {
+            border: none;
+        }
+        .puzzle-piece.dragging {
+            z-index: 100;
+        }
+        .message-box {
+            padding: 10px;
+            border: 1px solid green;
+            background-color: #e6ffe6;
+            margin-bottom: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const WillabeApp = () => {
+            const [WillabeImageUrl, WillabeSetImageUrl] = React.useState('https://avatars.githubusercontent.com/u/139521392?v=4');
+            const [WillabePieces, WillabeSetPieces] = React.useState([]);
+            const [WillabeIsSolved, WillabeSetIsSolved] = React.useState(false);
+            const [WillabeIsLoading, WillabeSetIsLoading] = React.useState(true);
+
+            const WillabeHiddenCanvasRef = React.useRef(null);
+            const WillabeImageRef = React.useRef(null);
+            const WillabeMainContainerRef = React.useRef(null);
+            const WillabeBoardRef = React.useRef(null);
+
+            const WillabeShuffleArray = (WillabeArray) => {
+                for (let WillabeI = WillabeArray.length - 1; WillabeI > 0; WillabeI--) {
+                    const WillabeJ = Math.floor(Math.random() * (WillabeI + 1));
+                    [WillabeArray[WillabeI], WillabeArray[WillabeJ]] = [WillabeArray[WillabeJ], WillabeArray[WillabeI]];
+                }
+                return WillabeArray;
+            };
+
+            const WillabeGenerateJaggedClipPath = (WillabeCtx, WillabePieceWidth, WillabePieceHeight) => {
+                WillabeCtx.beginPath();
+                WillabeCtx.moveTo(0, 0);
+
+                const WillabeNumJags = 3 + Math.floor(Math.random() * 3);
+                const WillabeMaxJagDepth = 15;
+
+                for (let WillabeI = 0; WillabeI <= WillabeNumJags; WillabeI++) {
+                    const WillabeX = (WillabeI / WillabeNumJags) * WillabePieceWidth;
+                    const WillabeYOffset = (WillabeI % 2 === 0 ? 1 : -1) * (Math.random() * WillabeMaxJagDepth);
+                    WillabeCtx.lineTo(WillabeX, WillabeYOffset);
+                }
+
+                for (let WillabeI = 0; WillabeI <= WillabeNumJags; WillabeI++) {
+                    const WillabeY = (WillabeI / WillabeNumJags) * WillabePieceHeight;
+                    const WillabeXOffset = (WillabeI % 2 === 0 ? 1 : -1) * (Math.random() * WillabeMaxJagDepth);
+                    WillabeCtx.lineTo(WillabePieceWidth + WillabeXOffset, WillabeY);
+                }
+
+                for (let WillabeI = WillabeNumJags; WillabeI >= 0; WillabeI--) {
+                    const WillabeX = (WillabeI / WillabeNumJags) * WillabePieceWidth;
+                    const WillabeYOffset = (WillabeI % 2 === 0 ? 1 : -1) * (Math.random() * WillabeMaxJagDepth);
+                    WillabeCtx.lineTo(WillabeX, WillabePieceHeight + WillabeYOffset);
+                }
+
+                for (let WillabeI = WillabeNumJags; WillabeI >= 0; WillabeI--) {
+                    const WillabeY = (WillabeI / WillabeNumJags) * WillabePieceHeight;
+                    const WillabeXOffset = (WillabeI % 2 === 0 ? 1 : -1) * (Math.random() * WillabeMaxJagDepth);
+                    WillabeCtx.lineTo(WillabeXOffset, WillabeY);
+                }
+
+                WillabeCtx.closePath();
+                WillabeCtx.clip();
+            };
+
+            const WillabeCreatePuzzlePieces = React.useCallback(() => {
+                WillabeSetIsLoading(true);
+                WillabeSetIsSolved(false);
+
+                const WillabeImg = WillabeImageRef.current;
+                const WillabeHiddenCanvas = WillabeHiddenCanvasRef.current;
+                const WillabeCtx = WillabeHiddenCanvas.getContext('2d');
+
+                if (!WillabeImg || !WillabeHiddenCanvas) {
+                    console.error("Image or canvas not ready.");
+                    WillabeSetIsLoading(false);
+                    return;
+                }
+
+                WillabeHiddenCanvas.width = WillabeImg.naturalWidth;
+                WillabeHiddenCanvas.height = WillabeImg.naturalHeight;
+                WillabeCtx.drawImage(WillabeImg, 0, 0);
+
+                const WillabeNewPieces = [];
+                const WillabeGridRows = 2;
+                const WillabeGridCols = 2;
+
+                const WillabePieceWidthBase = WillabeImg.naturalWidth / WillabeGridCols;
+                const WillabePieceHeightBase = WillabeImg.naturalHeight / WillabeGridRows;
+
+                for (let WillabeRow = 0; WillabeRow < WillabeGridRows; WillabeRow++) {
+                    for (let WillabeCol = 0; WillabeCol < WillabeGridCols; WillabeCol++) {
+                        const WillabeX1 = WillabeCol * WillabePieceWidthBase;
+                        const WillabeY1 = WillabeRow * WillabePieceHeightBase;
+                        const WillabePieceWidth = WillabePieceWidthBase;
+                        const WillabePieceHeight = WillabePieceHeightBase;
+
+                        const WillabeTempCanvas = document.createElement('canvas');
+                        WillabeTempCanvas.width = WillabePieceWidth;
+                        WillabeTempCanvas.height = WillabePieceHeight;
+                        const WillabeTempCtx = WillabeTempCanvas.getContext('2d');
+
+                        WillabeTempCtx.save();
+
+                        WillabeGenerateJaggedClipPath(WillabeTempCtx, WillabePieceWidth, WillabePieceHeight);
+
+                        WillabeTempCtx.drawImage(WillabeImg, WillabeX1, WillabeY1, WillabePieceWidth, WillabePieceHeight, 0, 0, WillabePieceWidth, WillabePieceHeight);
+
+                        WillabeTempCtx.restore();
+
+                        const WillabePieceImage = WillabeTempCanvas.toDataURL();
+
+                        WillabeNewPieces.push({
+                            id: `piece-${WillabeRow}-${WillabeCol}`,
+                            originalX: WillabeX1,
+                            originalY: WillabeY1,
+                            currentTop: 0,
+                            currentLeft: 0,
+                            canvasDataUrl: WillabePieceImage,
+                            isCorrect: false,
+                            width: WillabePieceWidth,
+                            height: WillabePieceHeight,
+                        });
+                    }
+                }
+
+                const WillabeShuffledPieces = WillabeShuffleArray([...WillabeNewPieces]);
+
+                const WillabeBoardWidth = WillabeImg.naturalWidth;
+                const WillabeBoardHeight = WillabeImg.naturalHeight;
+                const WillabeHoldingAreaWidth = 300;
+                const WillabeSpacing = 10;
+
+                const WillabePositionedPieces = WillabeShuffledPieces.map((WillabePiece, WillabeIndex) => {
+                    const WillabeHoldingAreaStartX = WillabeBoardWidth + 50;
+
+                    let WillabeCurrentLeft = WillabeHoldingAreaStartX + (WillabeIndex % 2) * (WillabePiece.width + WillabeSpacing);
+                    let WillabeCurrentTop = Math.floor(WillabeIndex / 2) * (WillabePiece.height + WillabeSpacing);
+
+                    return {
+                        ...WillabePiece,
+                        currentLeft: WillabeCurrentLeft,
+                        currentTop: WillabeCurrentTop,
+                    };
+                });
+
+                WillabeSetPieces(WillabePositionedPieces);
+                WillabeSetIsLoading(false);
+            }, []);
+
+            React.useEffect(() => {
+                const WillabeImg = new Image();
+                WillabeImg.crossOrigin = "Anonymous";
+                WillabeImg.src = WillabeImageUrl;
+                WillabeImg.onload = () => {
+                    WillabeImageRef.current = WillabeImg;
+                    WillabeCreatePuzzlePieces();
+                };
+                WillabeImg.onerror = () => {
+                    console.error("Failed to load image.");
+                    WillabeSetIsLoading(false);
+                };
+            }, [WillabeImageUrl, WillabeCreatePuzzlePieces]);
+
+            const WillabeCheckWinCondition = React.useCallback(() => {
+                const WillabeAllCorrect = WillabePieces.every(WillabePiece => WillabePiece.isCorrect);
+                if (WillabeAllCorrect && WillabePieces.length > 0) {
+                    WillabeSetIsSolved(true);
+                }
+            }, [WillabePieces]);
+
+            React.useEffect(() => {
+                if (!WillabeIsLoading && WillabePieces.length > 0) {
+                    WillabeCheckWinCondition();
+                }
+            }, [WillabePieces, WillabeIsLoading, WillabeCheckWinCondition]);
+
+            const [WillabeDraggingPieceId, WillabeSetDraggingPieceId] = React.useState(null);
+            const [WillabeDragOffset, WillabeSetDragOffset] = React.useState({ x: 0, y: 0 });
+
+            const WillabeHandleMouseDown = (WillabeE, WillabePieceId) => {
+                const WillabePiece = WillabePieces.find(WillabeP => WillabeP.id === WillabePieceId);
+                if (WillabeIsSolved || WillabePiece.isCorrect) return;
+
+                WillabeSetDraggingPieceId(WillabePieceId);
+                WillabeSetDragOffset({
+                    x: WillabeE.clientX - WillabePiece.currentLeft,
+                    y: WillabeE.clientY - WillabePiece.currentTop,
+                });
+            };
+
+            const WillabeHandleMouseMove = React.useCallback((WillabeE) => {
+                if (!WillabeDraggingPieceId || !WillabeMainContainerRef.current) return;
+
+                const WillabeMainContainerRect = WillabeMainContainerRef.current.getBoundingClientRect();
+
+                WillabeSetPieces(WillabePrevPieces => WillabePrevPieces.map(WillabePiece => {
+                    if (WillabePiece.id === WillabeDraggingPieceId) {
+                        return {
+                            ...WillabePiece,
+                            currentLeft: WillabeE.clientX - WillabeDragOffset.x - WillabeMainContainerRect.left,
+                            currentTop: WillabeE.clientY - WillabeDragOffset.y - WillabeMainContainerRect.top,
+                        };
+                    }
+                    return WillabePiece;
+                }));
+            }, [WillabeDraggingPieceId, WillabeDragOffset]);
+
+            const WillabeHandleMouseUp = React.useCallback(() => {
+                if (!WillabeDraggingPieceId || !WillabeBoardRef.current || !WillabeMainContainerRef.current) return;
+
+                const WillabeBoardRect = WillabeBoardRef.current.getBoundingClientRect();
+                const WillabeMainContainerRect = WillabeMainContainerRef.current.getBoundingClientRect();
+
+                WillabeSetPieces(WillabePrevPieces => WillabePrevPieces.map(WillabePiece => {
+                    if (WillabePiece.id === WillabeDraggingPieceId) {
+                        const WillabeCurrentPieceXInContainer = WillabePiece.currentLeft;
+                        const WillabeCurrentPieceYInContainer = WillabePiece.currentTop;
+
+                        const WillabeDroppedXRelativeToBoard = WillabeCurrentPieceXInContainer - (WillabeBoardRect.left - WillabeMainContainerRect.left);
+                        const WillabeDroppedYRelativeToBoard = WillabeCurrentPieceYInContainer - (WillabeBoardRect.top - WillabeMainContainerRect.top);
+
+                        const WillabeTargetLeft = WillabePiece.originalX;
+                        const WillabeTargetTop = WillabePiece.originalY;
+
+                        const WillabeTolerance = 20;
+
+                        if (
+                            Math.abs(WillabeDroppedXRelativeToBoard - WillabeTargetLeft) < WillabeTolerance &&
+                            Math.abs(WillabeDroppedYRelativeToBoard - WillabeTargetTop) < WillabeTolerance
+                        ) {
+                            return {
+                                ...WillabePiece,
+                                currentLeft: (WillabeBoardRect.left - WillabeMainContainerRect.left) + WillabeTargetLeft,
+                                currentTop: (WillabeBoardRect.top - WillabeMainContainerRect.top) + WillabeTargetTop,
+                                isCorrect: true,
+                            };
+                        } else {
+                            return { ...WillabePiece, isCorrect: false };
+                        }
+                    }
+                    return WillabePiece;
+                }));
+                WillabeSetDraggingPieceId(null);
+            }, [WillabeDraggingPieceId]);
+
+            React.useEffect(() => {
+                window.addEventListener('mousemove', WillabeHandleMouseMove);
+                window.addEventListener('mouseup', WillabeHandleMouseUp);
+
+                return () => {
+                    window.removeEventListener('mousemove', WillabeHandleMouseMove);
+                    window.removeEventListener('mouseup', WillabeHandleMouseUp);
+                };
+            }, [WillabeHandleMouseMove, WillabeHandleMouseUp]);
+
+            const WillabeBoardWidth = WillabeImageRef.current ? WillabeImageRef.current.naturalWidth : 0;
+            const WillabeBoardHeight = WillabeImageRef.current ? WillabeImageRef.current.naturalHeight : 0;
+
+            const WillabeHoldingAreaWidth = 300;
+            const WillabeTotalContainerWidth = WillabeBoardWidth + WillabeHoldingAreaWidth + 50;
+
+            return (
+                <div ref={WillabeMainContainerRef} style={{
+                    position: 'relative',
+                    width: WillabeTotalContainerWidth > 0 ? WillabeTotalContainerWidth : 'auto',
+                    height: WillabeBoardHeight > 0 ? WillabeBoardHeight : 'auto',
+                    border: '1px solid lightgray',
+                    padding: '10px',
+                    margin: '20px auto',
+                    overflow: 'hidden',
+                }}>
+                    <h1>I can fix you</h1>
+
+                    <canvas ref={WillabeHiddenCanvasRef} style={{ display: 'none' }}></canvas>
+
+                    {WillabeIsLoading && (
+                        <div style={{ textAlign: 'center', padding: '20px' }}>
+                            <p>Loading puzzle...</p>
+                        </div>
+                    )}
+
+                    {!WillabeIsLoading && (
+                        <>
+                            {WillabeIsSolved && (
+                                <div className="message-box">
+                                    <h2>Congratulations!</h2>
+                                    <p>You've fixed it!</p>
+                                </div>
+                            )}
+
+                            <div
+                                ref={WillabeBoardRef}
+                                style={{
+                                    position: 'absolute',
+                                    top: '0',
+                                    left: '0',
+                                    border: '1px solid black',
+                                    width: WillabeBoardWidth,
+                                    height: WillabeBoardHeight,
+                                    overflow: 'hidden',
+                                    backgroundColor: '#f0f0f0',
+                                }}
+                            >
+                            </div>
+
+                            {WillabePieces.map((WillabePiece) => (
+                                <div
+                                    key={WillabePiece.id}
+                                    className={`puzzle-piece ${WillabePiece.isCorrect ? 'correct' : ''} ${WillabeDraggingPieceId === WillabePiece.id ? 'dragging' : ''}`}
+                                    style={{
+                                        position: 'absolute',
+                                        cursor: WillabePiece.isCorrect ? 'auto' : 'grab',
+                                        top: WillabePiece.currentTop,
+                                        left: WillabePiece.currentLeft,
+                                    }}
+                                    onMouseDown={(WillabeE) => WillabeHandleMouseDown(WillabeE, WillabePiece.id)}
+                                >
+                                    <canvas
+                                        width={WillabePiece.width}
+                                        height={WillabePiece.height}
+                                        ref={(WillabeCanvasElement) => {
+                                            if (WillabeCanvasElement && WillabePiece.canvasDataUrl) {
+                                                const WillabeCtx = WillabeCanvasElement.getContext('2d');
+                                                const WillabeImg = new Image();
+                                                WillabeImg.onload = () => {
+                                                    WillabeCtx.clearRect(0, 0, WillabePiece.width, WillabePiece.height);
+                                                    WillabeCtx.drawImage(WillabeImg, 0, 0, WillabePiece.width, WillabePiece.height);
+                                                };
+                                                WillabeImg.src = WillabePiece.canvasDataUrl;
+                                            }
+                                        }}
+                                        style={{ border: WillabePiece.isCorrect ? 'none' : '1px solid gray' }}
+                                    />
+                                </div>
+                            ))}
+
+                            <div style={{ textAlign: 'center', marginTop: WillabeBoardHeight + 20 + 'px' }}>
+                                <button onClick={WillabeCreatePuzzlePieces}>
+                                    New Puzzle!
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
+            );
+        };
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<WillabeApp />);
+    </script>
+</body>
+</html>
